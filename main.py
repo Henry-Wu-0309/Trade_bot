@@ -1,5 +1,8 @@
+from flask import Flask
+from threading import Thread
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+
 import os
 
 TOKEN = "7666413078:AAHPEwCP26AWgLf4UeA1Lzn5JQqMVdNtUmw"
@@ -9,6 +12,17 @@ GROUP_ID = -2381062851  # Thay bằng ID group của mày
 user_balance = {"user": 1000, "bot": 1000}  # Mỗi đứa 1000 USDT
 open_orders = []
 
+# Flask server để bypass health check
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot Telegram đang chạy!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=8000)
+
+# Hàm xử lý lệnh bot
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot trade đã hoạt động! Dùng /help để xem lệnh.")
 
@@ -28,22 +42,22 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user.username or "user"
     args = context.args
-    
+
     if len(args) != 4:
         await update.message.reply_text("Sai cú pháp! Dùng: /trade <MUA/BÁN> <coin> <số lượng> <giá>")
         return
-    
+
     action, coin, amount, price = args
-    
+
     try:
         amount = float(amount)
         price = float(price)
     except ValueError:
         await update.message.reply_text("Số lượng và giá phải là số hợp lệ!")
         return
-    
+
     total_cost = amount * price
-    
+
     if action.upper() == "MUA":
         if user_balance["user"] >= total_cost:
             user_balance["user"] -= total_cost
@@ -52,7 +66,7 @@ async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ {user} đã mua {amount} {coin} giá {price} USDT!")
         else:
             await update.message.reply_text("❌ Không đủ USDT để mua!")
-    
+
     elif action.upper() == "BÁN":
         if user_balance["bot"] >= total_cost:
             user_balance["user"] += total_cost
@@ -70,13 +84,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📜 Bot đã ghi nhận lệnh: " + text)
 
 if __name__ == "__main__":
-    app = Application.builder().token(TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("balance", balance))
-    app.add_handler(CommandHandler("trade", trade))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
+    bot = Application.builder().token(TOKEN).build()
+
+    bot.add_handler(CommandHandler("start", start))
+    bot.add_handler(CommandHandler("help", help_command))
+    bot.add_handler(CommandHandler("balance", balance))
+    bot.add_handler(CommandHandler("trade", trade))
+    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Chạy Flask trên một luồng riêng để tránh chặn bot
+    Thread(target=run_flask, daemon=True).start()
+
     print("Bot đang chạy...")
-    app.run_polling()
+    bot.run_polling()
